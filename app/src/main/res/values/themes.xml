@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme -->
+    <style name="Theme.YouTubeSummarizer" parent="android:Theme.DeviceDefault.NoActionBar" />
+
+    <!-- Translucent Overlay Theme for the Share Bottom Sheet -->
+    <style name="Theme.YouTubeSummarizer.Overlay" parent="android:Theme.DeviceDefault.NoActionBar">
+        <!-- Make the activity background fully transparent to show YouTube underneath -->
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.55</item> <!-- Custom dim ratio for premium depth -->
+    </style>
+</resources>
