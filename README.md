@@ -19,9 +19,8 @@ When browsing YouTube or YouTube Vanced, simply tap **Share** -> select **YouTub
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/screen1.png" width="250" alt="Screenshot 1" style="margin: 10px;" />
-  <img src="docs/screenshots/screen4.png" width="250" alt="Screenshot 2" style="margin: 10px;" />
-  <img src="docs/screenshots/screen5.jpg" width="250" alt="Screenshot 3" style="margin: 10px;" />
+  <img src="docs/screenshots/summary.jpg" width="250" alt="Summary View" style="margin: 10px;" />
+  <img src="docs/screenshots/history.jpg" width="250" alt="History View" style="margin: 10px;" />
 </p>
 
 ---
