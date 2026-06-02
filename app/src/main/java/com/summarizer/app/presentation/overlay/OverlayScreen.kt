@@ -1,5 +1,7 @@
 package com.summarizer.app.presentation.overlay
 
+import androidx.activity.compose.BackHandler
+
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -14,8 +16,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.summarizer.app.domain.model.ChatMessage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,6 +56,19 @@ fun OverlayScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    var selectedTab by remember { mutableStateOf(0) }
+
+    LaunchedEffect(uiState.summary) {
+        if (uiState.summary == null) {
+            selectedTab = 0
+        }
+    }
+
+    if (selectedTab != 0) {
+        BackHandler {
+            selectedTab = 0
+        }
+    }
 
     // Slide up bottom animation state
     var isVisible by remember { mutableStateOf(false) }
@@ -76,7 +95,12 @@ fun OverlayScreen(
                 animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
             ) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.clickable(enabled = false) { } // Prevent clicks on sheet from propagating to background
+            modifier = Modifier.clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) {
+                // Consume clicks to prevent sheet dismissal, while preserving keyboard focus propagation
+            }
         ) {
             Card(
                 modifier = Modifier
@@ -85,7 +109,7 @@ fun OverlayScreen(
                     .border(1.dp, CardBorderColor, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                     .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f) // Ultra-premium opacity fallback
+                    containerColor = MaterialTheme.colorScheme.surface
                 ),
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             ) {
@@ -135,7 +159,7 @@ fun OverlayScreen(
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // --- Scrollable Core Area ---
@@ -157,27 +181,84 @@ fun OverlayScreen(
                                 )
                             }
                             uiState.summary != null -> {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .verticalScroll(scrollState)
-                                        .scrollbar(scrollState, color = MaterialTheme.colorScheme.primary, thickness = 6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    MarkdownText(
-                                        text = uiState.summary?.summary ?: "",
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.height(24.dp))
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    TabRow(
+                                        selectedTabIndex = selectedTab,
+                                        containerColor = Color.Transparent,
+                                        contentColor = MaterialTheme.colorScheme.primary,
+                                        divider = { HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)) }
+                                    ) {
+                                        Tab(
+                                            selected = selectedTab == 0,
+                                            onClick = { selectedTab = 0 },
+                                            text = { Text("Summary", fontWeight = FontWeight.SemiBold) }
+                                        )
+                                        Tab(
+                                            selected = selectedTab == 1,
+                                            onClick = { selectedTab = 1 },
+                                            text = { Text("Chat with Video", fontWeight = FontWeight.SemiBold) }
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxWidth()
+                                    ) {
+                                        if (selectedTab == 0) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .verticalScroll(scrollState)
+                                                    .scrollbar(scrollState, color = MaterialTheme.colorScheme.primary, thickness = 6.dp),
+                                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                                            ) {
+                                                MarkdownText(
+                                                    text = uiState.summary?.summary ?: "",
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+
+                                                if (uiState.isGenerating) {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(vertical = 12.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.Center
+                                                    ) {
+                                                        CircularProgressIndicator(
+                                                            modifier = Modifier.size(16.dp),
+                                                            strokeWidth = 2.dp,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = "AI is typing...",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+
+                                                Spacer(modifier = Modifier.height(24.dp))
+                                            }
+                                        } else {
+                                            ChatTabContent(
+                                                uiState = uiState,
+                                                viewModel = viewModel
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
 
                     // --- Footer Operations Bar (Visible only on Success) ---
-                    if (uiState.summary != null) {
-                        Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    if (uiState.summary != null && !uiState.isGenerating && selectedTab == 0) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -397,5 +478,185 @@ fun Modifier.scrollbar(
             alpha = alpha,
             cornerRadius = CornerRadius(thickness.toPx() / 2f, thickness.toPx() / 2f)
         )
+    }
+}
+
+@Composable
+private fun ChatTabContent(
+    uiState: OverlayUiState,
+    viewModel: OverlayViewModel
+) {
+    val lazyListState = rememberLazyListState()
+
+    LaunchedEffect(uiState.chatMessages.size) {
+        if (uiState.chatMessages.isNotEmpty()) {
+            lazyListState.animateScrollToItem(uiState.chatMessages.size - 1)
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Ask questions based on the video transcript",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "Clear",
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clickable { viewModel.clearChatHistory() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+            if (uiState.isChatLoading) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(36.dp),
+                        strokeWidth = 3.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Scraping transcript for chat...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    items(uiState.chatMessages.size) { index ->
+                        val message = uiState.chatMessages[index]
+                        ChatMessageBubble(message)
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = uiState.chatInputText,
+                onValueChange = { viewModel.updateChatInput(it) },
+                placeholder = { Text("Ask about this video...") },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(24.dp),
+                maxLines = 3,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            )
+            IconButton(
+                onClick = { 
+                    viewModel.sendChatMessage(uiState.chatInputText)
+                },
+                enabled = uiState.chatInputText.isNotBlank() && !uiState.isChatLoading,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                ),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send Message",
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatMessageBubble(message: ChatMessage) {
+    val alignment = if (message.isUser) Alignment.End else Alignment.Start
+    val bgColors = if (message.isUser) {
+        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+    } else {
+        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+    }
+    val contentColor = if (message.isUser) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        horizontalAlignment = alignment
+    ) {
+        Card(
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = if (message.isUser) 16.dp else 4.dp,
+                bottomEnd = if (message.isUser) 4.dp else 16.dp
+            ),
+            colors = bgColors,
+            modifier = Modifier.widthIn(max = 280.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                if (message.isUser) {
+                    Text(
+                        text = message.content,
+                        color = contentColor,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else {
+                    MarkdownText(
+                        text = message.content,
+                        color = contentColor
+                    )
+                }
+                
+                if (message.isStreaming && message.content.isEmpty()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).background(contentColor, RoundedCornerShape(50)).alpha(0.5f))
+                        Box(modifier = Modifier.size(6.dp).background(contentColor, RoundedCornerShape(50)).alpha(0.5f))
+                        Box(modifier = Modifier.size(6.dp).background(contentColor, RoundedCornerShape(50)).alpha(0.5f))
+                    }
+                }
+            }
+        }
     }
 }

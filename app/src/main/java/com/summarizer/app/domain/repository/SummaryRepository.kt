@@ -2,6 +2,7 @@ package com.summarizer.app.domain.repository
 
 import com.summarizer.app.domain.model.SummaryItem
 import com.summarizer.app.domain.model.Transcript
+import com.summarizer.app.domain.model.ChatMessage
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -29,6 +30,15 @@ interface SummaryRepository {
      * Query the Gemini LLM to generate a streaming summary, emitting text chunks dynamically.
      */
     fun generateSummaryStream(videoId: String, title: String, transcriptText: String): Flow<String>
+
+    /**
+     * Queries the Gemini LLM to generate a streaming response to a user's question, given the video transcript and conversation history context.
+     */
+    fun generateChatStream(
+        transcriptText: String,
+        history: List<ChatMessage>,
+        question: String
+    ): Flow<String>
 
     /**
      * Store a completed summary in the local database.

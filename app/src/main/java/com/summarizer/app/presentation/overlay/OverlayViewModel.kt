@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.summarizer.app.core.di.ServiceLocator
 import com.summarizer.app.core.utils.YoutubeParser
 import com.summarizer.app.domain.model.SummaryItem
+import com.summarizer.app.domain.model.ChatMessage
 import com.summarizer.app.domain.repository.SummaryRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,9 +23,15 @@ data class OverlayUiState(
     val title: String = "YouTube Video",
     val summary: SummaryItem? = null,
     val isLoading: Boolean = false,
+    val isGenerating: Boolean = false,
     val statusMessage: String = "",
     val error: String? = null,
-    val isApiKeyMissing: Boolean = false
+    val isApiKeyMissing: Boolean = false,
+    val chatMessages: List<ChatMessage> = listOf(
+        ChatMessage("Hi! I'm your video assistant. Ask me anything about this video, and I'll answer using the transcript!", isUser = false)
+    ),
+    val isChatLoading: Boolean = false,
+    val chatInputText: String = ""
 )
 
 /**
@@ -36,6 +43,8 @@ class OverlayViewModel(
 
     private val _uiState = MutableStateFlow(OverlayUiState())
     val uiState: StateFlow<OverlayUiState> = _uiState.asStateFlow()
+
+    private var activeTranscriptText: String? = null
 
     /**
      * Executes the background loading sequence, notifying UI at each step.
@@ -58,11 +67,17 @@ class OverlayViewModel(
                 videoId = videoId,
                 title = sharedTitle,
                 isLoading = true,
+                isGenerating = false,
                 error = null,
                 isApiKeyMissing = false,
-                summary = null
+                summary = null,
+                chatMessages = listOf(
+                    ChatMessage("Hi! I'm your video assistant. Ask me anything about this video, and I'll answer using the transcript!", isUser = false)
+                ),
+                chatInputText = ""
             )
         }
+        activeTranscriptText = null
 
         viewModelScope.launch {
             try {
@@ -111,6 +126,7 @@ class OverlayViewModel(
                 }
 
                 val transcript = transcriptResult.getOrThrow()
+                activeTranscriptText = transcript.getFullText()
                 // Prefer exact title scraped from YouTube header over guessed share title
                 val actualTitle = if (transcript.title.isNotBlank()) transcript.title else sharedTitle
                 
@@ -118,7 +134,9 @@ class OverlayViewModel(
                 _uiState.update { 
                     it.copy(
                         title = actualTitle,
-                        statusMessage = "Generating..."
+                        statusMessage = "Generating...",
+                        isLoading = false,
+                        isGenerating = true
                     ) 
                 }
                 
@@ -137,14 +155,14 @@ class OverlayViewModel(
                         
                     _uiState.update { 
                         it.copy(
-                            isLoading = false,
+                            isGenerating = false,
                             statusMessage = "Completed!"
                         )
                     }
                 } catch (e: Exception) {
                     _uiState.update { 
                         it.copy(
-                            isLoading = false,
+                            isGenerating = false,
                             error = e.message ?: "AI summarization failed. Please verify your internet connection or API Key."
                         )
                     }
@@ -154,7 +172,113 @@ class OverlayViewModel(
                 _uiState.update { 
                     it.copy(
                         isLoading = false,
+                        isGenerating = false,
                         error = e.message ?: "An unexpected error occurred."
+                    )
+                }
+            }
+        }
+    }
+
+    fun updateChatInput(text: String) {
+        _uiState.update { it.copy(chatInputText = text) }
+    }
+
+    fun clearChatHistory() {
+        _uiState.update { 
+            it.copy(
+                chatMessages = listOf(
+                    ChatMessage("Hi! I'm your video assistant. Ask me anything about this video, and I'll answer using the transcript!", isUser = false)
+                )
+            )
+        }
+    }
+
+    fun sendChatMessage(message: String) {
+        if (message.isBlank()) return
+        val videoId = _uiState.value.videoId ?: return
+
+        val userMessage = ChatMessage(content = message, isUser = true)
+        val updatedMessages = _uiState.value.chatMessages + userMessage
+        _uiState.update { 
+            it.copy(
+                chatMessages = updatedMessages,
+                chatInputText = ""
+            ) 
+        }
+
+        viewModelScope.launch {
+            try {
+                // Safeguard: Ensure we have transcript text in memory
+                if (activeTranscriptText == null) {
+                    _uiState.update { it.copy(isChatLoading = true) }
+                    val transcriptResult = repository.fetchTranscript(videoId)
+                    if (transcriptResult.isFailure) {
+                        val errMsg = transcriptResult.exceptionOrNull()?.message 
+                            ?: "Failed to scrape transcripts. Make sure captions/subtitles are available for this video."
+                        _uiState.update { 
+                            it.copy(
+                                isChatLoading = false,
+                                chatMessages = it.chatMessages + ChatMessage(
+                                    content = "Could not fetch transcript context: $errMsg",
+                                    isUser = false
+                                )
+                            )
+                        }
+                        return@launch
+                    }
+                    val transcript = transcriptResult.getOrThrow()
+                    activeTranscriptText = transcript.getFullText()
+                    _uiState.update { it.copy(isChatLoading = false) }
+                }
+
+                val transcriptText = activeTranscriptText ?: return@launch
+
+                // Append initial streaming response placeholder
+                val aiPlaceholder = ChatMessage(content = "", isUser = false, isStreaming = true)
+                _uiState.update { it.copy(chatMessages = it.chatMessages + aiPlaceholder) }
+
+                try {
+                    repository.generateChatStream(transcriptText, updatedMessages, message)
+                        .collect { textChunk ->
+                            _uiState.update { state ->
+                                val messages = state.chatMessages.toMutableList()
+                                if (messages.isNotEmpty()) {
+                                    val lastIndex = messages.lastIndex
+                                    messages[lastIndex] = messages[lastIndex].copy(content = textChunk)
+                                }
+                                state.copy(chatMessages = messages)
+                            }
+                        }
+
+                    _uiState.update { state ->
+                        val messages = state.chatMessages.toMutableList()
+                        if (messages.isNotEmpty()) {
+                            val lastIndex = messages.lastIndex
+                            messages[lastIndex] = messages[lastIndex].copy(isStreaming = false)
+                        }
+                        state.copy(chatMessages = messages)
+                    }
+                } catch (e: Exception) {
+                    _uiState.update { state ->
+                        val messages = state.chatMessages.toMutableList()
+                        if (messages.isNotEmpty()) {
+                            val lastIndex = messages.lastIndex
+                            messages[lastIndex] = messages[lastIndex].copy(
+                                content = "AI reply interrupted: ${e.message ?: "Failed to generate answer. Check API key."}",
+                                isStreaming = false
+                            )
+                        }
+                        state.copy(chatMessages = messages)
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update { state ->
+                    state.copy(
+                        chatMessages = state.chatMessages + ChatMessage(
+                            content = "An unexpected error occurred: ${e.message}",
+                            isUser = false
+                        )
                     )
                 }
             }

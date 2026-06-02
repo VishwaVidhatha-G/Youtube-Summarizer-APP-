@@ -8,6 +8,7 @@ import com.summarizer.app.data.network.YoutubeTranscriptScraper
 import com.summarizer.app.data.preferences.PreferenceManager
 import com.summarizer.app.domain.model.SummaryItem
 import com.summarizer.app.domain.model.Transcript
+import com.summarizer.app.domain.model.ChatMessage
 import com.summarizer.app.domain.repository.SummaryRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -126,6 +127,71 @@ class SummaryRepositoryImpl(
                 timestamp = System.currentTimeMillis()
             )
             saveSummary(summaryItem)
+        }
+    }.flowOn(Dispatchers.IO)
+
+    override fun generateChatStream(
+        transcriptText: String,
+        history: List<ChatMessage>,
+        question: String
+    ): Flow<String> = flow {
+        val apiKey = preferenceManager.getApiKey()
+        if (apiKey.isBlank()) {
+            throw Exception("Gemini API Key is not set. Please open the app's settings and input your Google AI Studio API Key first.")
+        }
+
+        val historyPrompt = history.joinToString("\n") { msg ->
+            if (msg.isUser) "User: ${msg.content}" else "Assistant: ${msg.content}"
+        }
+
+        val prompt = """
+            You are a helpful, expert AI assistant answering questions about a YouTube video.
+            You are given the full video transcript below. Use the transcript to answer the user's question with high accuracy, detail, and context.
+            
+            CRITICAL RULES:
+            1. LANGUAGE: Keep the language simple, plain, and easy to understand. Avoid complex jargon, but do NOT make the answers vague, brief, or incomplete. Be comprehensive and thorough in your explanations.
+            2. GROUNDING: Answer using ONLY the facts and information stated in the video transcript. Do not assume, extrapolate, or bring in outside knowledge. If the video does not cover the answer, state "I cannot find this information in the video transcript."
+            3. EXPLANATION: Reference specific details, names, steps, or explanations from the video transcript to answer the user's question fully.
+
+            Transcript:
+            $transcriptText
+
+            Conversation History:
+            $historyPrompt
+
+            User Question:
+            $question
+
+            Assistant:
+        """.trimIndent()
+
+        val request = GeminiRequest.createSimpleRequest(prompt)
+        val response = geminiApiService.streamGenerateContent(apiKey, request)
+        if (!response.isSuccessful) {
+            throw Exception("Failed to connect to Gemini API: ${response.code()}")
+        }
+        val responseBody = response.body() ?: throw Exception("Empty response body from Gemini API.")
+        
+        val gson = com.google.gson.Gson()
+        var fullText = ""
+        
+        val source = responseBody.source()
+        while (!source.exhausted()) {
+            val line = source.readUtf8Line() ?: break
+            if (line.startsWith("data: ")) {
+                val jsonStr = line.substring(6).trim()
+                if (jsonStr == "[DONE]") break
+                try {
+                    val chunk = gson.fromJson(jsonStr, com.summarizer.app.data.model.GeminiResponse::class.java)
+                    val text = chunk.getGeneratedText()
+                    if (text != null) {
+                        fullText += text
+                        emit(fullText)
+                    }
+                } catch (e: Exception) {
+                    // ignore malformed chunks
+                }
+            }
         }
     }.flowOn(Dispatchers.IO)
 

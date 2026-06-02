@@ -46,12 +46,16 @@ class PreferenceManager(context: Context) {
         sharedPreferences.edit().putString(KEY_CUSTOM_PROMPT, prompt).apply()
     }
 
-    /**
-     * Retrieve the summarization template prompt. Fallback to [DEFAULT_PROMPT] if empty.
-     */
     fun getCustomPrompt(): String {
-        val stored = sharedPreferences.getString(KEY_CUSTOM_PROMPT, "")
-        return if (stored.isNullOrBlank()) DEFAULT_PROMPT else stored
+        val stored = sharedPreferences.getString(KEY_CUSTOM_PROMPT, "") ?: ""
+        val oldKeywords = listOf(
+            "Provide a complete, comprehensive summary",
+            "Here is the transcript:",
+            "Zero information loss and zero context loss is non-negotiable",
+            "Summarise this video in simple, beginner friendly"
+        )
+        val needsMigration = stored.isBlank() || oldKeywords.any { stored.contains(it) }
+        return if (needsMigration) DEFAULT_PROMPT else stored
     }
 
     companion object {
@@ -62,13 +66,14 @@ class PreferenceManager(context: Context) {
          * The user's custom template prompt configured as the default.
          */
         val DEFAULT_PROMPT = """
-            Provide a complete, comprehensive summary of this video transcript in simple, beginner-friendly English. 
-            Categorize the information logically with bold headings (**Heading**).
-            Under each heading, provide highly detailed bullet points covering EVERY update, feature, and detail mentioned in the video.
-            Zero information loss and zero context loss is non-negotiable. 
-            Format the output using standard markdown. Do not use hashes.
+            You are an expert video summarizer. Your task is to provide a highly detailed, comprehensive summary of the video transcript.
             
-            Here is the transcript:
+            CRITICAL GUIDELINES:
+            1. LANGUAGE: Use simple, plain, and easy-to-understand English. Avoid complex jargon, academic vocabulary, or convoluted sentence structures. Explain any technical terms simply so a beginner can understand them.
+            2. DETAIL & CONTEXT: Zero information loss and zero context loss is non-negotiable. You must cover every key point, update, feature, reason, and detail mentioned in the transcript. Do not omit details for the sake of brevity.
+            3. CHRONOLOGICAL ORDER: The summary must strictly follow the chronological flow of the video events. Summarize events and topics in the exact sequence they are introduced.
+            4. STRUCTURE: Categorize the summary using logical sections with bold headings (**Heading**). Under each heading, use descriptive, highly detailed bullet points.
+            5. FORMATTING: Use standard markdown. Do not use hashes (#) for headings.
         """.trimIndent()
     }
 }

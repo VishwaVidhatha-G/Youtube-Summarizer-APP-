@@ -12,6 +12,6 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowIsFloating">false</item>
         <item name="android:backgroundDimEnabled">true</item>
-        <item name="android:backgroundDimAmount">0.55</item> <!-- Custom dim ratio for premium depth -->
+        <item name="android:backgroundDimAmount">0.75</item> <!-- Custom dim ratio for premium depth -->
     </style>
 </resources>

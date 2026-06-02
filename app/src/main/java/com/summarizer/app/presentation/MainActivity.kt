@@ -3,6 +3,7 @@ package com.summarizer.app.presentation
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.viewModels
 import androidx.compose.runtime.*
 import com.summarizer.app.core.designsystem.YouTubeSummarizerTheme
@@ -41,6 +42,13 @@ class MainActivity : ComponentActivity() {
             var currentScreen by remember { mutableStateOf(Screen.HISTORY) }
 
             YouTubeSummarizerTheme {
+                if (currentScreen == Screen.SETTINGS) {
+                    BackHandler {
+                        settingsViewModel.loadSettings()
+                        currentScreen = Screen.HISTORY
+                    }
+                }
+
                 when (currentScreen) {
                     Screen.HISTORY -> {
                         HistoryScreen(
