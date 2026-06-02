@@ -6,9 +6,9 @@
 [![AI](https://img.shields.io/badge/AI-Gemini_3.5_Flash-orange?style=flat-square&logo=google-gemini)](https://aistudio.google.com/)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)](LICENSE)
 
-YouTube Summarizer is a frictionless, native Android utility that replicates your desktop AI summarization workflow (like Brave Leo) directly in your mobile usage flow. 
+YouTube Summarizer is a frictionless, native Android utility that replicates your desktop AI summarization & chatbot workflow (like Brave Leo) directly in your mobile usage flow. 
 
-When browsing YouTube or YouTube Vanced, simply tap **Share** -> select **YouTube Summarizer**, and a premium glassmorphic bottom overlay slides up to instantly present a structured, concise bullet-point summary of the video. It runs **100% serverless, completely for free**, and is optimized to run smoothly on mid-range devices like the **Xiaomi 11i**.
+When browsing YouTube or YouTube Vanced, simply tap **Share** -> select **YouTube Summarizer**, and a premium glassmorphic bottom overlay slides up to instantly present a structured, chronological summary of the video, and provides an interactive, transcript-aware Q&A Chatbot to query the video directly. It runs **100% serverless, completely for free**, and is optimized to run smoothly on mid-range devices like the **Xiaomi 11i**.
 
 ---
 
@@ -69,8 +69,20 @@ com.summarizer.app/
 ### Key Technical Achievements:
 1.  **Zero-Overhead Dependency Injection**: Implements a thread-safe, double-locked **Service Locator pattern** rather than bloated compilation-based DI libraries. This prevents configuration issues in Android Studio and guarantees **instant Gradle compile speeds**.
 2.  **Privacy-First Cryptography**: Implements `EncryptedSharedPreferences` backed by a 256-bit AES Master Key stored directly in your phone's hardware **Android Keystore**, ensuring your Gemini API key is secure and never committed to GitHub.
-3.  **On-device Transcript Extraction**: mimics browser headers to extract YouTube subtitle tracks directly, appending `&fmt=json3` to retrieve timed caption nodes in clean JSON, bypassing heavy standard YouTube API quotas completely for free.
+3.  **On-device Transcript Extraction**: Mimics browser headers to extract YouTube subtitle tracks directly, appending `&fmt=json3` to retrieve timed caption nodes in clean JSON, bypassing heavy standard YouTube API quotas completely for free.
 4.  **Double-Cache Optimizations**: The `GetSummaryUseCase` queries the local SQLite Room database before initializing scrapers, saving network bandwidth and LLM tokens.
+5.  **Low-Latency SSE Streaming & Chat Integration**: Implements a Server-Sent Events (SSE) parser that decodes raw network byte streams chunk-by-chunk and pipes text deltas directly into Compose UI State, bringing perceived latency down to near zero.
+
+---
+
+## 💡 Solving the Mobile AI Video Gap (Product Philosophy)
+
+Most mobile video summaries and AI extensions fail to meet user needs due to three major industry gaps:
+1.  **Active Querying vs. Passive Summarization**: Static text summaries still force you to read long paragraphs to find a single detail. We solve this by adding a **transcript-grounded Q&A chatbot** right next to the summary. If you want to know a specific detail (e.g., *"What was the exact price mentioned?"* or *"At what step did they install the packages?"*), you can ask it directly without scanning the video timeline.
+2.  **The Simplicity vs. Context Paradox**: Many AI tools simplify summaries by stripping away key details. We decoupled **Language Style** (clear, beginner-friendly, plain English) from **Content Depth** (strict zero context loss, detailed chronological sequence) to deliver a summary that is extremely easy to read, yet contains 100% of the video's technical information.
+3.  **Subscription Bloat**: Desktop plugins and summarization apps force you into monthly fee structures. This app runs **100% serverless on the client-side**, linking directly to your personal, free Google AI Studio key, ensuring lifetime utility with absolute privacy.
+
+---
 
 ---
 
@@ -88,16 +100,21 @@ com.summarizer.app/
      │
 [OverlayViewModel]
      │
-     ├─► Checks local Room DB Cache (Hit? Return instantly!)
+     ├─► Checks local Room DB Cache (Hit? Return summary instantly!)
      ├─► Scrapes YouTube HTML page for caption links
      ├─► Requests captions in JSON3 structure (fmt=json3)
      ├─► Fetches Gemini API Key from Encrypted Keystore
-     ├─► Calls Gemini 1.5 Flash API with prompt template + transcript
+     ├─► Initiates SSE stream connection using Gemini 3.5 Flash API
      ├─► Caches completed summary in Room DB
      │
 [OverlayScreen]
      │
-     └─► Slides up frosted bottom sheet showing structured summary Markdown!
+     ├─► Slides up solid bottom sheet showing Summary and Chat tabs.
+     │
+     ├─► [Tab: Summary] ──► Shows chronological, simple-English summary chunks streamed in real-time.
+     │
+     └─► [Tab: Chat]    ──► User asks questions ──► Fetch transcript on-demand (if from cache) 
+                            ──► Streams transcript-grounded, detailed AI answers!
 ```
 
 ---
